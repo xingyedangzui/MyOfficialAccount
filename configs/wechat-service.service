@@ -1,0 +1,24 @@
+[Unit]
+Description=WeChat Official Account Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/MyOfficialAccount
+ExecStart=/usr/bin/python3 script/main.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# 环境变量
+Environment=PYTHONPATH=/MyOfficialAccount
+Environment=PYTHONUNBUFFERED=1
+
+# 安全设置
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+{
+    "python.defaultInterpreterPath": "python",
+    "python.analysis.extraPaths": [
+        "./script"
+    ],
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.autoImportCompletions": true,
+    "python.terminal.executeInFileDir": false,
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.stubPath": "c:\\Users\\wb.xiexingyuan02\\.vscode\\extensions\\g78.g78ls-1.4.1\\bundled\\libs\\g78-stubs",
+}
