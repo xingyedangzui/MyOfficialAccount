@@ -30,8 +30,10 @@ class ImageMsg(Msg):
 class LocationMsg(Msg):
     def __init__(self, xmlData):
         Msg.__init__(self, xmlData)
-        self.Location_X = xmlData.find('Location_X').text
-        self.Location_Y = xmlData.find('Location_Y').text
+        self.Location_X = xmlData.find('Location_X').text  # 纬度
+        self.Location_Y = xmlData.find('Location_Y').text  # 经度
+        self.Scale = xmlData.find('Scale').text  # 地图缩放大小
+        self.Label = xmlData.find('Label').text  # 地理位置信息（地址描述）
 
 
 class EventMsg(object):

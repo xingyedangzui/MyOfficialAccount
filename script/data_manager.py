@@ -807,6 +807,244 @@ class UserDataManager:
         """
         return len(self.get_recipe_list())
 
+    # ==================== 用户偏好设置管理 ==================== #
+
+    def set_user_weather_city(self, openid: str, city_name: str, city_pinyin: str = None) -> bool:
+        """
+        设置用户的天气城市偏好
+
+        Args:
+            openid: 用户的openid
+            city_name: 城市名称（中文）
+            city_pinyin: 城市拼音（用于API查询）
+
+        Returns:
+            bool: 是否成功
+        """
+        import time
+
+        def update_users(current_users):
+            if current_users is None:
+                current_users = {}
+
+            if openid not in current_users:
+                current_users[openid] = {}
+
+            current_users[openid]['weather_city'] = city_name
+            current_users[openid]['weather_city_pinyin'] = city_pinyin or city_name
+            current_users[openid]['weather_city_set_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
+
+            return current_users
+
+        return self.data_manager.update_data(self.users_file, update_users, {})
+
+    def get_user_weather_city(self, openid: str) -> Optional[Dict]:
+        """
+        获取用户的天气城市偏好
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            Dict: 包含城市信息的字典，未设置时返回None
+                  - city_name: str, 城市名称
+                  - city_pinyin: str, 城市拼音
+        """
+        users = self.data_manager.load_data(self.users_file, {})
+        user_info = users.get(openid, {})
+
+        city_name = user_info.get('weather_city')
+        if city_name:
+            return {
+                'city_name': city_name,
+                'city_pinyin': user_info.get('weather_city_pinyin', city_name),
+            }
+        return None
+
+    def clear_user_weather_city(self, openid: str) -> bool:
+        """
+        清除用户的天气城市偏好
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 是否成功
+        """
+
+        def update_users(current_users):
+            if current_users is None:
+                current_users = {}
+
+            if openid in current_users:
+                current_users[openid].pop('weather_city', None)
+                current_users[openid].pop('weather_city_pinyin', None)
+                current_users[openid].pop('weather_city_set_time', None)
+
+            return current_users
+
+        return self.data_manager.update_data(self.users_file, update_users, {})
+
+    # ==================== 天气推送订阅管理 ==================== #
+
+    def subscribe_weather_push(self, openid: str) -> bool:
+        """
+        订阅天气推送
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 是否成功
+        """
+        import time
+
+        def update_vip_users(current_vip_users):
+            if current_vip_users is None:
+                current_vip_users = {}
+
+            if openid in current_vip_users:
+                current_vip_users[openid]['weather_push_enabled'] = True
+                current_vip_users[openid]['weather_push_subscribe_time'] = time.strftime(
+                    '%Y-%m-%d %H:%M:%S'
+                )
+
+            return current_vip_users
+
+        return self.data_manager.update_data(self.vip_users_file, update_vip_users, {})
+
+    def unsubscribe_weather_push(self, openid: str) -> bool:
+        """
+        取消订阅天气推送
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 是否成功
+        """
+
+        def update_vip_users(current_vip_users):
+            if current_vip_users is None:
+                current_vip_users = {}
+
+            if openid in current_vip_users:
+                current_vip_users[openid]['weather_push_enabled'] = False
+                current_vip_users[openid].pop('weather_push_subscribe_time', None)
+
+            return current_vip_users
+
+        return self.data_manager.update_data(self.vip_users_file, update_vip_users, {})
+
+    def is_weather_push_subscribed(self, openid: str) -> bool:
+        """
+        检查用户是否已订阅天气推送
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 是否已订阅
+        """
+        vip_info = self.get_vip_info(openid)
+        if vip_info:
+            return vip_info.get('weather_push_enabled', False)
+        return False
+
+    def get_weather_push_subscribers(self) -> list:
+        """
+        获取所有订阅天气推送的用户列表
+
+        Returns:
+            list: 订阅用户的openid列表
+        """
+        vip_users = self.get_all_vip_users()
+        subscribers = []
+
+        for openid, vip_info in vip_users.items():
+            if vip_info.get('weather_push_enabled', False):
+                subscribers.append(openid)
+
+        return subscribers
+
+    # ==================== 每日首次互动检测 ==================== #
+
+    def is_first_interaction_today(self, openid: str) -> bool:
+        """
+        检查用户今日是否为首次互动
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 是否为今日首次互动
+        """
+        import time
+
+        today = time.strftime('%Y-%m-%d')
+
+        # 获取用户的每日互动记录
+        daily_interactions = self.data_manager.load_data('daily_interactions', {})
+
+        # 检查今天是否已有互动记录
+        user_interactions = daily_interactions.get(openid, {})
+        last_interaction_date = user_interactions.get('last_date', '')
+
+        return last_interaction_date != today
+
+    def record_daily_interaction(self, openid: str) -> bool:
+        """
+        记录用户今日的互动
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 记录是否成功
+        """
+        import time
+
+        today = time.strftime('%Y-%m-%d')
+
+        def update_interactions(current_data):
+            if current_data is None:
+                current_data = {}
+
+            # 更新用户的互动记录
+            current_data[openid] = {
+                'last_date': today,
+                'last_time': time.strftime('%H:%M:%S'),
+            }
+
+            # 清理过期的记录（只保留今天的）
+            # 避免数据文件无限增长
+            keys_to_remove = []
+            for uid, info in current_data.items():
+                if info.get('last_date', '') != today:
+                    keys_to_remove.append(uid)
+
+            for uid in keys_to_remove:
+                del current_data[uid]
+
+            return current_data
+
+        return self.data_manager.update_data('daily_interactions', update_interactions, {})
+
+    def check_and_record_first_interaction(self, openid: str) -> bool:
+        """
+        检查并记录用户今日首次互动（原子操作）
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 是否为今日首次互动
+        """
+        is_first = self.is_first_interaction_today(openid)
+        if is_first:
+            self.record_daily_interaction(openid)
+        return is_first
+
 
 # 全局实例
 data_manager = JSONDataManager()

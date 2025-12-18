@@ -2,6 +2,175 @@
 HOST = '0.0.0.0:80'  # 生产环境监听所有IP地址的80端口
 TOKEN = 'xiexingyuan'  # 微信公众平台配置的Token
 
+# ------------------------ 微信公众号配置 ------------------------ #
+# 需要在微信公众平台获取
+WECHAT_APPID = 'wxd40a2f1281ff19c6'  # 公众号AppID
+WECHAT_APPSECRET = '100fe3e1f25cd963b70805f6c90eedd6'  # 公众号AppSecret
+
+# ------------------------ 天气功能配置 ------------------------ #
+# 和风天气API配置
+WEATHER_API_KEY = '90c7e91d8a514d1bbdcbc9769a08ba7e'  # 天气API密钥
+WEATHER_API_HOST = 'na5xmdv86m.re.qweatherapi.com'  # 和风天气API Host
+WEATHER_DEFAULT_CITY = '101010100'  # 默认城市代码（北京）
+WEATHER_API_TIMEOUT = 10  # API请求超时时间（秒）
+
+# 天气API优先级配置（可以调整顺序）
+# 'qweather' - 和风天气API（需要密钥）
+# 'wttr' - wttr.in 免费API（无需密钥）
+WEATHER_API_PRIORITY = ['qweather', 'wttr']
+
+# 常用城市ID映射表（避免每次调用GEO API，提高响应速度）
+WEATHER_CITY_ID_MAP = {
+    '北京': '101010100',
+    '上海': '101020100',
+    '广州': '101280101',
+    '深圳': '101280601',
+    '杭州': '101210101',
+    '成都': '101270101',
+    '重庆': '101040100',
+    '武汉': '101200101',
+    '西安': '101110101',
+    '南京': '101190101',
+    '天津': '101030100',
+    '苏州': '101190401',
+    '长沙': '101250101',
+    '郑州': '101180101',
+    '青岛': '101120201',
+    '大连': '101070201',
+    '厦门': '101230201',
+    '福州': '101230101',
+    '济南': '101120101',
+    '合肥': '101220101',
+    '昆明': '101290101',
+    '贵阳': '101260101',
+    '南宁': '101300101',
+    '海口': '101310101',
+    '三亚': '101310201',
+    '拉萨': '101140101',
+    '乌鲁木齐': '101130101',
+    '哈尔滨': '101050101',
+    '长春': '101060101',
+    '沈阳': '101070101',
+    '石家庄': '101090101',
+    '太原': '101100101',
+    '呼和浩特': '101080101',
+    '银川': '101170101',
+    '兰州': '101160101',
+    '西宁': '101150101',
+    '南昌': '101240101',
+    '无锡': '101190201',
+    '宁波': '101210401',
+    '东莞': '101281601',
+    '佛山': '101280800',
+    '温州': '101210701',
+    '珠海': '101280701',
+    '中山': '101281701',
+    '惠州': '101280301',
+    '常州': '101191101',
+    '烟台': '101120501',
+    '嘉兴': '101210301',
+    '南通': '101190501',
+    '金华': '101210901',
+    '徐州': '101190801',
+    '泉州': '101230501',
+    '绍兴': '101210501',
+    '台州': '101210601',
+    '潍坊': '101120601',
+    '洛阳': '101180901',
+    '扬州': '101190601',
+    '保定': '101090201',
+    '唐山': '101090501',
+    '镇江': '101190301',
+    '湖州': '101210201',
+    '芜湖': '101220301',
+    '漳州': '101230601',
+    '临沂': '101120901',
+    '威海': '101121301',
+    '邯郸': '101091001',
+    '泰安': '101120801',
+    '淮安': '101190901',
+    '盐城': '101190701',
+    '济宁': '101120701',
+    '德州': '101120401',
+    '聊城': '101121701',
+    '枣庄': '101121401',
+    '淄博': '101120301',
+    '日照': '101121501',
+    '泰州': '101191201',
+    '宿迁': '101191301',
+    '连云港': '101191001',
+    '秦皇岛': '101091101',
+    '廊坊': '101090601',
+    '沧州': '101090701',
+    '张家口': '101090301',
+    '承德': '101090401',
+    '邢台': '101090901',
+    '衡水': '101090801',
+    '阳泉': '101100301',
+    '大同': '101100201',
+    '朔州': '101100901',
+    '晋城': '101100601',
+    '晋中': '101100401',
+    '运城': '101100701',
+    '忻州': '101100501',
+    '临汾': '101100801',
+    '吕梁': '101101001',
+    '包头': '101080201',
+    '乌海': '101080301',
+    '赤峰': '101080401',
+    '通辽': '101080501',
+    '鄂尔多斯': '101080701',
+}
+
+# 城市拼音映射表（用于wttr.in API）
+WEATHER_CITY_PINYIN_MAP = {
+    '北京': 'Beijing',
+    '上海': 'Shanghai',
+    '广州': 'Guangzhou',
+    '深圳': 'Shenzhen',
+    '杭州': 'Hangzhou',
+    '成都': 'Chengdu',
+    '重庆': 'Chongqing',
+    '武汉': 'Wuhan',
+    '西安': 'Xian',
+    '南京': 'Nanjing',
+    '天津': 'Tianjin',
+    '苏州': 'Suzhou',
+    '长沙': 'Changsha',
+    '郑州': 'Zhengzhou',
+    '青岛': 'Qingdao',
+    '大连': 'Dalian',
+    '厦门': 'Xiamen',
+    '福州': 'Fuzhou',
+    '济南': 'Jinan',
+    '合肥': 'Hefei',
+    '昆明': 'Kunming',
+    '贵阳': 'Guiyang',
+    '南宁': 'Nanning',
+    '海口': 'Haikou',
+    '三亚': 'Sanya',
+    '拉萨': 'Lasa',
+    '乌鲁木齐': 'Urumqi',
+    '哈尔滨': 'Harbin',
+    '长春': 'Changchun',
+    '沈阳': 'Shenyang',
+    '石家庄': 'Shijiazhuang',
+    '太原': 'Taiyuan',
+    '呼和浩特': 'Hohhot',
+    '银川': 'Yinchuan',
+    '兰州': 'Lanzhou',
+    '西宁': 'Xining',
+    '南昌': 'Nanchang',
+    '无锡': 'Wuxi',
+    '宁波': 'Ningbo',
+    '东莞': 'Dongguan',
+    '佛山': 'Foshan',
+    '温州': 'Wenzhou',
+    '珠海': 'Zhuhai',
+    '中山': 'Zhongshan',
+    '惠州': 'Huizhou',
+}
+
 # 暗号验证配置
 SECRET_CODE = '源源爱娇娇'  # 暗号，用户发送此内容即可通过验证
 SECRET_CODE_TIMEOUT = 300  # 暗号输入超时时间（秒），5分钟
@@ -105,6 +274,11 @@ class Commands:
     # 取消/退出关键词
     CANCEL_KEYWORDS = ('取消', '退出', '返回')
 
+    # 天气功能关键词
+    WEATHER_KEYWORDS = ('天气', '今日天气', '查天气', '天气预报')
+    WEATHER_PREFIX = '天气 '  # 查询指定城市天气，如 "天气 上海"
+    WEATHER_CHANGE_CITY = ('更换城市', '切换城市', '换城市', '修改城市')  # 更换天气城市
+
 
 class RecipeCategory:
     """菜谱分类"""
@@ -158,17 +332,23 @@ class SessionState:
     WAITING_VERIFY = 'waiting_verify'  # 等待输入暗号验证
     WAITING_RECIPE = 'waiting_recipe'  # 等待输入菜谱内容
     WAITING_RECIPE_CATEGORY = 'waiting_recipe_category'  # 等待选择菜谱分类
+    WAITING_WEATHER_CITY = 'waiting_weather_city'  # 等待设置天气城市
 
 
 # ------------------------ 菜谱功能相关消息 ------------------------ #
 # 一级帮助菜单
 HELP_MESSAGE = """📖 功能列表
 
-1️⃣ 发送「菜谱」- 菜谱相关功能
-2️⃣ 发送「验证」- 身份验证成为VIP
-3️⃣ 发送「我的VIP」- 查看VIP信息
+1️⃣ 发送「天气」- 查看今日天气
+2️⃣ 发送「订阅天气」- 开启每日天气推送(VIP)
+3️⃣ 发送「菜谱」- 菜谱功能菜单
+4️⃣ 发送「查看菜谱」- 查看菜谱列表
+5️⃣ 发送「随机菜谱」- 今天吃什么
+6️⃣ 发送「验证」- 身份验证成为VIP
+7️⃣ 发送「我的VIP」- 查看VIP信息
 
-💡 直接发送对应文字即可~"""
+💡 直接发送对应文字即可~
+💡 发送「天气 城市名」可查询指定城市天气"""
 
 # 二级菜谱菜单
 RECIPE_MENU_MESSAGE = """🍳 菜谱功能
@@ -212,13 +392,20 @@ RECIPE_LIST_EMPTY = """📖 菜谱列表
 
 VIP用户可以发送「记录菜谱」来添加第一个菜谱！"""
 
-# 菜谱列表模板
+# 菜谱列表模板（分类展示）
 RECIPE_LIST_TEMPLATE = """📖 菜谱列表
 
-{recipe_list}
+🥩 荤菜
+{meat_list}
+
+🥬 素菜
+{veg_list}
 
 共 {total} 个菜谱
 发送「菜谱 序号」查看详情"""
+
+# 菜谱分类为空提示
+RECIPE_CATEGORY_LIST_EMPTY = """（暂无）"""
 
 # 菜谱详情模板
 RECIPE_DETAIL_TEMPLATE = """🍳 {recipe_name}
@@ -338,3 +525,122 @@ VIP_PREFIX = """【VIP专属】"""
 
 # 图片消息回复
 IMAGE_REPLY = """收到您的图片了！感谢分享！"""
+
+# ------------------------ 天气功能相关消息 ------------------------ #
+# 首次使用天气功能提示
+WEATHER_FIRST_USE_PROMPT = """🌤️ 天气查询
+
+您还没有设置常用城市~
+
+请发送您的城市名称（如：北京、上海）
+或发送您的位置，我将自动记录并查询天气。
+
+发送「取消」退出设置"""
+
+# 天气城市设置成功
+WEATHER_CITY_SET_SUCCESS = """✅ 已记住您的城市：{city}
+
+下次发送「天气」将直接查询该城市天气~
+发送「更换城市」可以修改哦~"""
+
+# 更换城市提示
+WEATHER_CHANGE_CITY_PROMPT = """🏙️ 更换天气城市
+
+当前城市：{current_city}
+
+请发送新的城市名称或发送您的位置~
+
+发送「取消」保持当前设置"""
+
+# 取消城市设置
+WEATHER_CITY_CANCELLED = """❌ 已取消
+
+发送「天气」继续查询天气~"""
+
+# 每日首次互动天气提醒（附加在正常回复后面）
+DAILY_WEATHER_GREETING = """
+
+---
+🌤️ 今日天气 | {city}
+🌡️ {temp}°C | {weather}
+👔 {clothing_advice}"""
+
+# ------------------------ 通知服务配置 ------------------------ #
+# Server酱配置（推荐，免费且简单）
+# 获取SendKey: https://sct.ftqq.com/
+SERVER_CHAN_SEND_KEY = 'SCT306181TiZi7EPhAsxmbH0dQsDPQa76n'  # 请填入您的Server酱SendKey
+
+# 邮件通知配置（可选）
+SMTP_SERVER = ''  # SMTP服务器，如 smtp.qq.com
+SMTP_PORT = 465  # SMTP端口，SSL一般为465
+SMTP_USER = ''  # 发件人邮箱
+SMTP_PASSWORD = ''  # 邮箱授权码（不是登录密码）
+NOTIFY_EMAIL = ''  # 接收通知的邮箱
+
+# ------------------------ 每日天气草稿配置 ------------------------ #
+# 草稿创建时间（24小时制）
+MASS_SEND_TIME = '07:00'
+
+# 群发天气的城市
+MASS_SEND_WEATHER_CITY = '广州'
+
+# 封面图片的media_id（永久素材ID）
+# 首次运行时会自动上传本地图片并打印media_id，请将其填入此处以避免重复上传
+MASS_SEND_THUMB_MEDIA_ID = 'FYWfqM3tyUNscjY1NSDFR-MVb21TL650Sy4RYytJjppcMIvVKK1LTIXWIpIQdOkt'
+
+# 封面图片本地路径（如果MASS_SEND_THUMB_MEDIA_ID为空，则使用此路径上传）
+# 建议使用绝对路径，图片尺寸建议：900x383 或 2.35:1 比例
+MASS_SEND_WEATHER_IMAGE_PATH = 'data/weather_cover.jpg'
+
+# 图文消息标题模板（不能含特殊字符和emoji）
+MASS_SEND_WEATHER_TITLE = '{date} {city}天气播报'
+
+# 图文消息作者
+MASS_SEND_AUTHOR = '源源和娇娇'
+
+# 图文消息摘要
+MASS_SEND_DIGEST = '今日天气早知道，出门穿衣有参考~'
+
+# 图文消息HTML内容模板
+MASS_SEND_WEATHER_HTML = """
+<section style="padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; color: white; margin-bottom: 20px;">
+    <h2 style="margin: 0 0 10px 0; font-size: 24px;">☀️ 早安！今天是{date} {weekday}</h2>
+    <p style="margin: 0; font-size: 16px; opacity: 0.9;">📍 {city}天气播报</p>
+</section>
+
+<section style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+    <h3 style="color: #333; margin: 0 0 15px 0; border-left: 4px solid #667eea; padding-left: 10px;">🌡️ 实时天气</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #666;">当前温度</td>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #333; font-weight: bold; text-align: right;">{temp}°C</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #666;">体感温度</td>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #333; font-weight: bold; text-align: right;">{feel_temp}°C</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #666;">天气状况</td>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #333; font-weight: bold; text-align: right;">{weather}</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #666;">相对湿度</td>
+            <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: #333; font-weight: bold; text-align: right;">{humidity}%</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px 0; color: #666;">风向风力</td>
+            <td style="padding: 10px 0; color: #333; font-weight: bold; text-align: right;">{wind_dir} {wind_scale}级</td>
+        </tr>
+    </table>
+</section>
+
+<section style="background: #fff3cd; padding: 20px; border-radius: 10px; border-left: 4px solid #ffc107;">
+    <h3 style="color: #856404; margin: 0 0 10px 0;">👔 今日穿衣建议</h3>
+    <p style="color: #856404; margin: 0; line-height: 1.6;">{clothing_advice}</p>
+</section>
+
+<section style="text-align: center; padding: 20px; color: #999;">
+    <p style="margin: 0;">💕 祝您今天心情愉快！</p>
+    <p style="margin: 5px 0 0 0; font-size: 12px;">—— 源源和娇娇的家 ——</p>
+</section>
+"""

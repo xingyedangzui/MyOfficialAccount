@@ -3,6 +3,7 @@
 import web
 import consts
 from handle import Handle
+from scheduler import start_scheduler, start_mass_send_scheduler
 
 
 def fixed_group(seq, size):
@@ -40,4 +41,9 @@ if __name__ == '__main__':
     import sys
 
     sys.argv = ['main.py', consts.HOST]
+
+    # 启动每日天气草稿调度器（每天7点创建草稿并通知）
+    print('正在启动每日天气草稿调度器...')
+    start_mass_send_scheduler()
+
     app.run()

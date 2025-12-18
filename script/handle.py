@@ -7,6 +7,13 @@ import receive
 from xml_templates import WeChatXMLTemplate
 import consts
 from data_manager import user_data_manager, data_manager
+from weather_service import (
+    get_free_weather_reply,
+    get_weather_by_location,
+    get_smart_weather_reply,
+    smart_weather_service,
+    get_clothing_advice,
+)
 
 
 class Handle(object):
@@ -89,6 +96,8 @@ class Handle(object):
             return self._handle_text_message(recMsg)
         elif msg_type == consts.WeChatMsgType.IMAGE:
             return self._handle_image_message(recMsg)
+        elif msg_type == consts.WeChatMsgType.LOCATION:
+            return self._handle_location_message(recMsg)
         else:
             print(f'不支持的消息类型: {msg_type}')
             return 'success'
@@ -140,11 +149,19 @@ class Handle(object):
         if recipe_reply:
             return self._create_text_response(toUser, fromUser, recipe_reply)
 
+        # 检查用户是否处于天气城市设置模式
+        weather_city_reply = self._handle_weather_city_session(toUser, user_content)
+        if weather_city_reply:
+            return self._create_text_response(toUser, fromUser, weather_city_reply)
+
         # 根据用户输入生成回复内容
         reply_content = self._generate_text_reply(toUser, user_content)
 
         # 检查是否有新菜谱通知需要附加
         reply_content = self._append_recipe_notification(toUser, reply_content)
+
+        # 检查VIP用户每日首次互动，附加天气提醒
+        reply_content = self._append_daily_weather_greeting(toUser, reply_content, user_content)
 
         return self._create_text_response(toUser, fromUser, reply_content)
 
@@ -239,6 +256,22 @@ class Handle(object):
         if user_content == consts.Commands.RECIPE_RANDOM:
             return self._handle_random_recipe()
 
+        # 天气功能关键词
+        if user_content in consts.Commands.WEATHER_KEYWORDS:
+            return self._handle_weather_keyword(user_openid)
+
+        # 更换天气城市关键词
+        if user_content in consts.Commands.WEATHER_CHANGE_CITY:
+            return self._handle_change_weather_city(user_openid)
+
+        # 天气推送订阅相关命令
+        if user_content in consts.WeatherPushCommands.SUBSCRIBE:
+            return self._handle_weather_push_subscribe(user_openid)
+        if user_content in consts.WeatherPushCommands.UNSUBSCRIBE:
+            return self._handle_weather_push_unsubscribe(user_openid)
+        if user_content in consts.WeatherPushCommands.STATUS:
+            return self._handle_weather_push_status(user_openid)
+
         # ==================== 3. 前缀匹配命令 ==================== #
         # 快捷记录菜谱：记录菜谱 + 内容（如 "记录菜谱 红烧肉"）
         if user_content.startswith(consts.Commands.RECIPE_ADD_PREFIX):
@@ -251,6 +284,12 @@ class Handle(object):
             recipe_detail = self._parse_recipe_detail_command(user_content)
             if recipe_detail:
                 return recipe_detail
+
+        # 指定城市天气：天气 + 城市名（如 "天气 上海"）
+        if user_content.startswith(consts.Commands.WEATHER_PREFIX):
+            city_name = user_content[len(consts.Commands.WEATHER_PREFIX) :].strip()
+            if city_name:
+                return self._handle_weather_query(city_name)
 
         # ==================== 4. 模糊匹配命令 ==================== #
         # 查看VIP信息
@@ -416,7 +455,6 @@ class Handle(object):
 
         # 获取之前保存的菜谱内容
         recipe_content = session.get('recipe_content', '')
-        recipe_name = session.get('recipe_name', '')
 
         # 保存菜谱（带分类）
         result = user_data_manager.add_recipe(user_openid, recipe_content, category)
@@ -455,11 +493,15 @@ class Handle(object):
 
     def _handle_quick_add_recipe(self, user_openid, recipe_content):
         """
-        快捷记录菜谱（VIP专属）- 进入分类选择流程
+        快捷记录菜谱（VIP专属）
+
+        支持两种格式：
+        1. "记录菜谱 红烧肉" - 需要后续选择分类
+        2. "记录菜谱 红烧肉 荤" - 一步完成记录
 
         Args:
             user_openid: 用户的OpenID
-            recipe_content: 菜谱内容
+            recipe_content: 菜谱内容（可能包含分类）
 
         Returns:
             str: 回复消息
@@ -468,19 +510,46 @@ class Handle(object):
         if not user_data_manager.is_vip_user(user_openid):
             return consts.RECIPE_VIP_ONLY
 
-        # 解析菜名（用于提示）
-        lines = recipe_content.strip().split('\n')
+        # 尝试解析是否包含分类（最后一个词）
+        parts = recipe_content.strip().split()
+        category = None
+        actual_content = recipe_content
+
+        if len(parts) >= 2:
+            # 检查最后一个词是否是分类关键词
+            last_word = parts[-1]
+            category = consts.RecipeCategory.get_category_by_keyword(last_word)
+            if category:
+                # 去掉最后的分类词，剩下的是菜谱内容
+                actual_content = ' '.join(parts[:-1])
+
+        # 解析菜名
+        lines = actual_content.strip().split('\n')
         recipe_name = lines[0].strip()
         if '：' in recipe_name:
             recipe_name = recipe_name.split('：', 1)[1].strip()
         elif ':' in recipe_name:
             recipe_name = recipe_name.split(':', 1)[1].strip()
 
-        # 保存菜谱内容到会话，等待用户选择分类
+        # 如果已经有分类，直接保存
+        if category:
+            result = user_data_manager.add_recipe(user_openid, actual_content, category)
+            if result['success']:
+                category_display = consts.RecipeCategory.get_display_name(category)
+                print(
+                    f'用户 {user_openid} 快捷添加菜谱成功: {result["recipe_name"]} (分类: {category})'
+                )
+                return consts.RECIPE_ADD_SUCCESS_WITH_CATEGORY.format(
+                    recipe_name=result['recipe_name'], category=category_display
+                )
+            else:
+                return consts.RECIPE_ADD_FAILED
+
+        # 没有分类，进入分类选择流程
         user_data_manager.set_user_session_state(
             user_openid,
             consts.SessionState.WAITING_RECIPE_CATEGORY,
-            {'recipe_content': recipe_content, 'recipe_name': recipe_name},
+            {'recipe_content': actual_content, 'recipe_name': recipe_name},
         )
 
         print(f'用户 {user_openid} 快捷输入菜谱: {recipe_name}，等待选择分类')
@@ -488,7 +557,7 @@ class Handle(object):
 
     def _handle_view_recipe_list(self, user_openid):
         """
-        处理查看菜谱列表
+        处理查看菜谱列表（分荤素展示）
 
         Args:
             user_openid: 用户的OpenID
@@ -501,35 +570,40 @@ class Handle(object):
         if not recipe_list:
             return consts.RECIPE_LIST_EMPTY
 
-        # 构建菜谱列表文本
-        recipe_lines = []
+        # 按分类分组
+        meat_recipes = []
+        veg_recipes = []
+
         for i, recipe in enumerate(recipe_list, 1):
             # 格式化日期，只显示月-日
             create_date = recipe.get('create_time_str', '')[:10]
             if create_date:
-                # 转换为 MM-DD 格式
                 parts = create_date.split('-')
                 if len(parts) == 3:
                     create_date = f'{parts[1]}-{parts[2]}'
 
-            # 获取分类标识
+            # 构建菜谱行文本（带序号）
+            recipe_line = f'{i}. {recipe["name"]} ({create_date})'
+
+            # 按分类归组
             category = recipe.get('category')
             if category == 'meat':
-                category_icon = '🥩'
+                meat_recipes.append(recipe_line)
             elif category == 'veg':
-                category_icon = '🥬'
+                veg_recipes.append(recipe_line)
             else:
-                category_icon = '📝'
+                # 未分类的默认放到素菜（或可以单独处理）
+                veg_recipes.append(recipe_line)
 
-            recipe_lines.append(f'{i}. {category_icon} {recipe["name"]} ({create_date})')
-
-        recipe_list_text = '\n'.join(recipe_lines)
+        # 构建分类列表文本
+        meat_list = '\n'.join(meat_recipes) if meat_recipes else consts.RECIPE_CATEGORY_LIST_EMPTY
+        veg_list = '\n'.join(veg_recipes) if veg_recipes else consts.RECIPE_CATEGORY_LIST_EMPTY
 
         # 清除用户的菜谱通知（已查看）
         user_data_manager.clear_recipe_notifications(user_openid)
 
         return consts.RECIPE_LIST_TEMPLATE.format(
-            recipe_list=recipe_list_text, total=len(recipe_list)
+            meat_list=meat_list, veg_list=veg_list, total=len(recipe_list)
         )
 
     def _handle_view_recipe_detail(self, index):
@@ -628,6 +702,339 @@ class Handle(object):
 
         return reply_content
 
+    def _append_daily_weather_greeting(self, user_openid, reply_content, user_content):
+        """
+        检查VIP用户每日首次互动，附加天气提醒
+
+        Args:
+            user_openid: 用户的OpenID
+            reply_content: 原始回复内容
+            user_content: 用户发送的消息（用于判断是否为天气查询）
+
+        Returns:
+            str: 附加天气提醒后的回复内容
+        """
+        # 只对已订阅天气推送的VIP用户生效
+        if not user_data_manager.is_weather_push_subscribed(user_openid):
+            return reply_content
+
+        # 如果用户正在查询天气，不重复附加
+        if user_content in consts.Commands.WEATHER_KEYWORDS:
+            # 记录今日互动（天气查询也算互动）
+            user_data_manager.record_daily_interaction(user_openid)
+            return reply_content
+
+        # 检查是否为今日首次互动
+        is_first = user_data_manager.check_and_record_first_interaction(user_openid)
+        if not is_first:
+            return reply_content
+
+        # 获取用户设置的城市
+        user_city = user_data_manager.get_user_weather_city(user_openid)
+        if not user_city:
+            return reply_content
+
+        # 获取天气信息
+        try:
+            city_name = user_city['city_name']
+            weather_info = smart_weather_service.get_weather(city_name)
+
+            if not weather_info or not weather_info.get('success'):
+                print(f'[DailyWeather] 获取天气失败: {city_name}')
+                return reply_content
+
+            # 获取穿衣建议
+            temp = weather_info.get('temp', 0)
+            weather_desc = weather_info.get('text', '')
+            clothing_advice = get_clothing_advice(temp, weather_desc)
+
+            # 附加天气提醒
+            weather_greeting = consts.DAILY_WEATHER_GREETING.format(
+                city=city_name,
+                temp=temp,
+                weather=weather_desc,
+                clothing_advice=clothing_advice,
+            )
+
+            print(f'[DailyWeather] 为用户 {user_openid[:8]}... 附加每日天气提醒')
+            return reply_content + weather_greeting
+
+        except Exception as e:
+            print(f'[DailyWeather] 获取天气异常: {e}')
+            return reply_content
+
+    # ==================== 天气功能处理方法 ==================== #
+
+    def _handle_weather_city_session(self, user_openid, user_content):
+        """
+        处理天气城市设置会话中的用户输入
+
+        Args:
+            user_openid: 用户的OpenID
+            user_content: 用户发送的消息内容
+
+        Returns:
+            str: 如果用户在天气城市设置会话中返回处理结果消息，否则返回None
+        """
+        # 检查用户会话状态
+        session = user_data_manager.get_user_session_state(user_openid)
+        if not session:
+            return None
+
+        state = session.get('state')
+
+        # 处理等待设置天气城市的状态
+        if state != consts.SessionState.WAITING_WEATHER_CITY:
+            return None
+
+        # 用户发送取消
+        if user_content in consts.Commands.CANCEL_KEYWORDS:
+            user_data_manager.clear_user_session_state(user_openid)
+            print(f'用户 {user_openid} 取消了天气城市设置')
+            return consts.WEATHER_CITY_CANCELLED
+
+        # 用户发送城市名称，保存并查询天气
+        city_name = user_content.strip()
+        city_pinyin = self._get_city_pinyin(city_name)
+
+        # 保存用户的天气城市偏好
+        user_data_manager.set_user_weather_city(user_openid, city_name, city_pinyin)
+
+        # 清除会话状态
+        user_data_manager.clear_user_session_state(user_openid)
+
+        print(f'用户 {user_openid} 设置天气城市: {city_name}')
+
+        # 查询并返回天气（使用智能API切换），同时显示设置成功消息
+        try:
+            weather_reply = get_smart_weather_reply(city_name, city_pinyin)
+            success_msg = consts.WEATHER_CITY_SET_SUCCESS.format(city=city_name)
+            return f'{success_msg}\n\n{weather_reply}'
+        except Exception as e:
+            print(f'设置城市后查询天气失败: {str(e)}')
+            return consts.WEATHER_CITY_SET_SUCCESS.format(city=city_name)
+
+    def _handle_weather_keyword(self, user_openid):
+        """
+        处理天气关键词 - 智能判断是否需要设置城市
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 检查用户是否已设置天气城市
+        user_city = user_data_manager.get_user_weather_city(user_openid)
+
+        if user_city:
+            # 已设置城市，直接查询天气（使用智能API切换）
+            city_name = user_city['city_name']
+            city_pinyin = user_city['city_pinyin']
+            print(f'用户 {user_openid} 查询已保存城市天气: {city_name}')
+
+            try:
+                # 使用智能天气服务（自动切换API）
+                weather_reply = get_smart_weather_reply(city_name, city_pinyin)
+                # 在天气信息后附加城市提示
+                return f'📍 {city_name}\n\n{weather_reply}\n\n💡 发送「更换城市」可修改'
+            except Exception as e:
+                print(f'查询天气失败: {str(e)}')
+                return '😢 获取天气信息失败，请稍后再试~'
+        else:
+            # 未设置城市，进入城市设置流程
+            user_data_manager.set_user_session_state(
+                user_openid, consts.SessionState.WAITING_WEATHER_CITY
+            )
+            print(f'用户 {user_openid} 首次使用天气功能，进入城市设置')
+            return consts.WEATHER_FIRST_USE_PROMPT
+
+    def _handle_change_weather_city(self, user_openid):
+        """
+        处理更换天气城市命令
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 获取当前城市
+        user_city = user_data_manager.get_user_weather_city(user_openid)
+        current_city = user_city['city_name'] if user_city else '未设置'
+
+        # 进入城市设置流程
+        user_data_manager.set_user_session_state(
+            user_openid, consts.SessionState.WAITING_WEATHER_CITY
+        )
+
+        print(f'用户 {user_openid} 请求更换天气城市，当前城市: {current_city}')
+        return consts.WEATHER_CHANGE_CITY_PROMPT.format(current_city=current_city)
+
+    def _handle_weather_query(self, city=None):
+        """
+        处理天气查询（使用智能API切换）
+
+        Args:
+            city: 城市名称，为None则使用默认城市
+
+        Returns:
+            str: 天气信息回复
+        """
+        print(f'处理天气查询: 城市={city or "默认"}')
+
+        try:
+            # 使用智能天气服务（自动切换API）
+            if city:
+                # 将中文城市名转换为拼音
+                city_pinyin = self._get_city_pinyin(city)
+                reply = get_smart_weather_reply(city, city_pinyin)
+            else:
+                # 默认查询北京天气
+                reply = get_smart_weather_reply('北京', 'Beijing')
+
+            return reply
+        except Exception as e:
+            print(f'天气查询失败: {str(e)}')
+            return '😢 获取天气信息失败，请稍后再试~'
+
+    def _get_city_pinyin(self, city_name):
+        """
+        将常见中文城市名转换为拼音
+
+        Args:
+            city_name: 中文城市名
+
+        Returns:
+            str: 城市拼音或原名称
+        """
+        # 常见城市映射表
+        city_map = {
+            '北京': 'Beijing',
+            '上海': 'Shanghai',
+            '广州': 'Guangzhou',
+            '深圳': 'Shenzhen',
+            '杭州': 'Hangzhou',
+            '成都': 'Chengdu',
+            '重庆': 'Chongqing',
+            '武汉': 'Wuhan',
+            '西安': 'Xian',
+            '南京': 'Nanjing',
+            '天津': 'Tianjin',
+            '苏州': 'Suzhou',
+            '长沙': 'Changsha',
+            '郑州': 'Zhengzhou',
+            '青岛': 'Qingdao',
+            '大连': 'Dalian',
+            '厦门': 'Xiamen',
+            '福州': 'Fuzhou',
+            '济南': 'Jinan',
+            '合肥': 'Hefei',
+            '昆明': 'Kunming',
+            '贵阳': 'Guiyang',
+            '南宁': 'Nanning',
+            '海口': 'Haikou',
+            '三亚': 'Sanya',
+            '拉萨': 'Lasa',
+            '乌鲁木齐': 'Urumqi',
+            '哈尔滨': 'Harbin',
+            '长春': 'Changchun',
+            '沈阳': 'Shenyang',
+            '石家庄': 'Shijiazhuang',
+            '太原': 'Taiyuan',
+            '呼和浩特': 'Hohhot',
+            '银川': 'Yinchuan',
+            '兰州': 'Lanzhou',
+            '西宁': 'Xining',
+        }
+
+        return city_map.get(city_name, city_name)
+
+    # ==================== 天气推送订阅处理方法 ==================== #
+
+    def _handle_weather_push_subscribe(self, user_openid):
+        """
+        处理天气推送订阅
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 检查是否是VIP用户
+        if not user_data_manager.is_vip_user(user_openid):
+            return consts.WEATHER_PUSH_VIP_ONLY
+
+        # 检查是否已经订阅
+        if user_data_manager.is_weather_push_subscribed(user_openid):
+            user_city = user_data_manager.get_user_weather_city(user_openid)
+            city_name = user_city['city_name'] if user_city else '未设置'
+            return consts.WEATHER_PUSH_ALREADY_SUBSCRIBED.format(city=city_name)
+
+        # 检查是否已设置天气城市
+        user_city = user_data_manager.get_user_weather_city(user_openid)
+        if not user_city:
+            return consts.WEATHER_PUSH_SUBSCRIBE_NO_CITY
+
+        # 订阅天气推送
+        success = user_data_manager.subscribe_weather_push(user_openid)
+        if success:
+            print(f'用户 {user_openid} 订阅了天气推送，城市: {user_city["city_name"]}')
+            return consts.WEATHER_PUSH_SUBSCRIBE_SUCCESS.format(city=user_city['city_name'])
+        else:
+            return '😢 订阅失败，请稍后重试~'
+
+    def _handle_weather_push_unsubscribe(self, user_openid):
+        """
+        处理取消天气推送订阅
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 检查是否已订阅
+        if not user_data_manager.is_weather_push_subscribed(user_openid):
+            return consts.WEATHER_PUSH_NOT_SUBSCRIBED
+
+        # 取消订阅
+        success = user_data_manager.unsubscribe_weather_push(user_openid)
+        if success:
+            print(f'用户 {user_openid} 取消了天气推送订阅')
+            return consts.WEATHER_PUSH_UNSUBSCRIBE_SUCCESS
+        else:
+            return '😢 取消订阅失败，请稍后重试~'
+
+    def _handle_weather_push_status(self, user_openid):
+        """
+        处理天气推送状态查询
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 检查是否是VIP用户
+        if not user_data_manager.is_vip_user(user_openid):
+            return consts.WEATHER_PUSH_VIP_ONLY
+
+        # 获取订阅状态
+        is_subscribed = user_data_manager.is_weather_push_subscribed(user_openid)
+        user_city = user_data_manager.get_user_weather_city(user_openid)
+        city_name = user_city['city_name'] if user_city else '未设置'
+
+        status = '✅ 已订阅' if is_subscribed else '❌ 未订阅'
+        action_hint = (
+            '发送「取消订阅天气」关闭推送' if is_subscribed else '发送「订阅天气」开启推送'
+        )
+
+        return consts.WEATHER_PUSH_STATUS.format(
+            status=status, city=city_name, action_hint=action_hint
+        )
+
     def _handle_verify_keyword(self, user_openid):
         """
         处理验证关键词
@@ -655,6 +1062,100 @@ class Handle(object):
 
         print(f'用户 {user_openid} 通过关键词开始身份验证流程')
         return consts.SECRET_CODE_PROMPT
+
+    def _handle_location_message(self, recMsg):
+        """处理位置消息 - 自动返回该位置的天气信息，并可保存城市偏好"""
+        toUser = recMsg.FromUserName
+        fromUser = recMsg.ToUserName
+
+        # 获取位置信息
+        latitude = getattr(recMsg, 'Location_X', None)  # 纬度
+        longitude = getattr(recMsg, 'Location_Y', None)  # 经度
+        label = getattr(recMsg, 'Label', None)  # 地址描述
+
+        print(f'处理位置消息: 用户({toUser})发送位置')
+        print(f'  纬度: {latitude}, 经度: {longitude}')
+        print(f'  地址: {label}')
+
+        # 记录位置消息
+        location_info = f'位置消息 - 纬度:{latitude}, 经度:{longitude}, 地址:{label}'
+        user_data_manager.record_user_message(toUser, 'location', location_info)
+
+        # 更新统计数据
+        user_data_manager.update_statistics('location_message')
+
+        # 检查用户是否处于天气城市设置模式
+        session = user_data_manager.get_user_session_state(toUser)
+        is_setting_city = (
+            session and session.get('state') == consts.SessionState.WAITING_WEATHER_CITY
+        )
+
+        # 从地址标签中提取城市名称
+        city_name = self._extract_city_from_label(label)
+
+        # 如果用户在设置城市模式，保存城市偏好
+        if is_setting_city and city_name:
+            city_pinyin = self._get_city_pinyin(city_name)
+            user_data_manager.set_user_weather_city(toUser, city_name, city_pinyin)
+            user_data_manager.clear_user_session_state(toUser)
+            print(f'用户 {toUser} 通过位置设置天气城市: {city_name}')
+
+        # 获取该位置的天气信息
+        try:
+            weather_reply = get_weather_by_location(latitude, longitude, label)
+
+            # 如果是设置城市模式，附加设置成功消息
+            if is_setting_city and city_name:
+                success_msg = consts.WEATHER_CITY_SET_SUCCESS.format(city=city_name)
+                weather_reply = f'{success_msg}\n\n{weather_reply}'
+
+            return self._create_text_response(toUser, fromUser, weather_reply)
+        except Exception as e:
+            print(f'根据位置获取天气失败: {str(e)}')
+            # 即使天气查询失败，如果城市设置成功也要通知用户
+            if is_setting_city and city_name:
+                return self._create_text_response(
+                    toUser, fromUser, consts.WEATHER_CITY_SET_SUCCESS.format(city=city_name)
+                )
+            return self._create_text_response(toUser, fromUser, '😢 获取天气信息失败，请稍后再试~')
+
+    def _extract_city_from_label(self, label):
+        """
+        从地址标签中提取城市名称
+
+        Args:
+            label: 地址描述，如 "北京市朝阳区xxx"
+
+        Returns:
+            str: 城市名称，提取失败返回None
+        """
+        if not label:
+            return None
+
+        # 尝试提取城市名
+        # 常见格式：省+市、直辖市、自治区等
+        import re
+
+        # 直辖市
+        direct_cities = ['北京', '上海', '天津', '重庆']
+        for city in direct_cities:
+            if city in label:
+                return city
+
+        # 匹配 xx市
+        city_match = re.search(r'([\u4e00-\u9fa5]{2,4})市', label)
+        if city_match:
+            return city_match.group(1)
+
+        # 匹配 xx区（可能是直辖市的区）
+        district_match = re.search(r'([\u4e00-\u9fa5]{2,4})区', label)
+        if district_match:
+            # 检查是否是直辖市的区
+            for city in direct_cities:
+                if city in label:
+                    return city
+
+        return None
 
     def _handle_image_message(self, recMsg):
         """处理图片消息"""
