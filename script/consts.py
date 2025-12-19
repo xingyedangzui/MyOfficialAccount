@@ -257,6 +257,16 @@ class Commands:
     # 帮助菜单关键词
     HELP_KEYWORDS = ('帮助', 'help', '?', '？')
 
+    # 签到积分相关关键词
+    CHECKIN_KEYWORDS = ('签到', '打卡')
+    POINTS_KEYWORDS = ('积分', '我的积分', '查积分')
+    RANKING_KEYWORDS = ('积分排行', '排行榜', '积分榜')
+    CHECKIN_HELP_KEYWORDS = ('签到说明', '签到规则', '积分说明')
+
+    # 昵称相关关键词
+    SET_NICKNAME_KEYWORDS = ('设置昵称', '修改昵称', '改名', '改昵称')
+    MY_NICKNAME_KEYWORDS = ('我的昵称', '查看昵称')
+
     # 菜谱功能关键词
     RECIPE_MENU = '菜谱'
     RECIPE_VIEW_LIST = '查看菜谱'
@@ -278,6 +288,14 @@ class Commands:
     WEATHER_KEYWORDS = ('天气', '今日天气', '查天气', '天气预报')
     WEATHER_PREFIX = '天气 '  # 查询指定城市天气，如 "天气 上海"
     WEATHER_CHANGE_CITY = ('更换城市', '切换城市', '换城市', '修改城市')  # 更换天气城市
+
+
+class WeatherPushCommands:
+    """天气推送订阅相关命令"""
+
+    SUBSCRIBE = ('订阅天气', '订阅天气推送', '开启天气推送')
+    UNSUBSCRIBE = ('取消订阅天气', '关闭天气推送', '取消天气推送')
+    STATUS = ('天气推送状态', '我的天气订阅')
 
 
 class RecipeCategory:
@@ -333,22 +351,27 @@ class SessionState:
     WAITING_RECIPE = 'waiting_recipe'  # 等待输入菜谱内容
     WAITING_RECIPE_CATEGORY = 'waiting_recipe_category'  # 等待选择菜谱分类
     WAITING_WEATHER_CITY = 'waiting_weather_city'  # 等待设置天气城市
+    WAITING_NICKNAME = 'waiting_nickname'  # 等待设置昵称
 
 
 # ------------------------ 菜谱功能相关消息 ------------------------ #
 # 一级帮助菜单
 HELP_MESSAGE = """📖 功能列表
 
-1️⃣ 发送「天气」- 查看今日天气
-2️⃣ 发送「订阅天气」- 开启每日天气推送(VIP)
-3️⃣ 发送「菜谱」- 菜谱功能菜单
-4️⃣ 发送「查看菜谱」- 查看菜谱列表
-5️⃣ 发送「随机菜谱」- 今天吃什么
-6️⃣ 发送「验证」- 身份验证成为VIP
-7️⃣ 发送「我的VIP」- 查看VIP信息
+🤖 【AI对话】直接发送任意消息即可与AI聊天
+1️⃣ 发送「签到」- 每日签到领积分
+2️⃣ 发送「积分」- 查看我的积分
+3️⃣ 发送「排行榜」- 积分排行榜
+4️⃣ 发送「设置昵称」- 设置个性化昵称
+5️⃣ 发送「天气」- 查看今日天气
+6️⃣ 发送「菜谱」- 菜谱功能菜单
+7️⃣ 发送「随机菜谱」- 今天吃什么
+8️⃣ 发送「验证」- 身份验证成为VIP
+9️⃣ 发送「我的VIP」- 查看VIP信息
 
-💡 直接发送对应文字即可~
-💡 发送「天气 城市名」可查询指定城市天气"""
+💡 发送「新对话」可重置AI对话
+💡 VIP用户签到积分翻倍！
+💡 发送「天气 城市名」可查询指定城市"""
 
 # 二级菜谱菜单
 RECIPE_MENU_MESSAGE = """🍳 菜谱功能
@@ -565,6 +588,53 @@ DAILY_WEATHER_GREETING = """
 🌡️ {temp}°C | {weather}
 👔 {clothing_advice}"""
 
+# ------------------------ 天气推送订阅相关消息 ------------------------ #
+# VIP专属提示
+WEATHER_PUSH_VIP_ONLY = """😢 天气推送是VIP专属功能哦~
+
+发送「验证」进行身份验证，成为VIP后即可使用！"""
+
+# 已订阅提示
+WEATHER_PUSH_ALREADY_SUBSCRIBED = """📢 您已订阅天气推送
+
+📍 推送城市：{city}
+
+每日首次互动时将为您播报天气~
+
+发送「取消订阅天气」可关闭推送"""
+
+# 订阅前需先设置城市
+WEATHER_PUSH_SUBSCRIBE_NO_CITY = """⚠️ 请先设置您的城市
+
+发送「天气」设置常用城市后，再来订阅天气推送~"""
+
+# 订阅成功
+WEATHER_PUSH_SUBSCRIBE_SUCCESS = """✅ 天气推送订阅成功！
+
+📍 推送城市：{city}
+
+每日首次互动时将为您播报天气~
+
+发送「取消订阅天气」可随时关闭"""
+
+# 未订阅提示
+WEATHER_PUSH_NOT_SUBSCRIBED = """您还没有订阅天气推送~
+
+发送「订阅天气」开启每日天气提醒"""
+
+# 取消订阅成功
+WEATHER_PUSH_UNSUBSCRIBE_SUCCESS = """✅ 已取消天气推送
+
+发送「订阅天气」可重新开启~"""
+
+# 推送状态查询
+WEATHER_PUSH_STATUS = """🌤️ 天气推送状态
+
+📊 订阅状态：{status}
+📍 推送城市：{city}
+
+💡 {action_hint}"""
+
 # ------------------------ 通知服务配置 ------------------------ #
 # Server酱配置（推荐，免费且简单）
 # 获取SendKey: https://sct.ftqq.com/
@@ -644,3 +714,136 @@ MASS_SEND_WEATHER_HTML = """
     <p style="margin: 5px 0 0 0; font-size: 12px;">—— 源源和娇娇的家 ——</p>
 </section>
 """
+
+# ------------------------ 签到积分系统配置 ------------------------ #
+
+# 签到积分规则
+CHECKIN_BASE_POINTS = 10  # 基础签到积分
+CHECKIN_STREAK_BONUS_3 = 20  # 连续3天额外奖励
+CHECKIN_STREAK_BONUS_7 = 50  # 连续7天额外奖励
+CHECKIN_VIP_MULTIPLIER = 2  # VIP积分倍数
+
+
+# 签到成功消息模板
+CHECKIN_SUCCESS = """✅ 签到成功！
+
+📅 连续签到：{consecutive_days} 天
+💰 获得积分：+{points_earned}{bonus_text}
+💎 当前积分：{total_points}
+🏆 累计签到：{total_checkins} 次
+
+{vip_bonus_text}{streak_tip}
+💡 坚持签到，积少成多~"""
+
+# VIP积分翻倍提示
+CHECKIN_VIP_BONUS_TEXT = '✨ VIP双倍积分已生效！\n'
+
+# 连续签到奖励提示
+CHECKIN_BONUS_TIP_3 = '\n🎁 再签{days}天可获得连续3天奖励+20积分！'
+CHECKIN_BONUS_TIP_7 = '\n🎁 再签{days}天可获得连续7天奖励+50积分！'
+CHECKIN_BONUS_GOT_3 = '\n🎉 连续3天奖励已到账！'
+CHECKIN_BONUS_GOT_7 = '\n🎉 连续7天奖励已到账！'
+
+# 今日已签到消息
+CHECKIN_ALREADY = """⏰ 今日已签到
+
+📅 连续签到：{consecutive_days} 天
+💎 当前积分：{total_points}
+🏆 累计签到：{total_checkins} 次
+
+明天再来签到吧~"""
+
+# 我的积分消息模板
+MY_POINTS_INFO = """💎 我的积分
+
+💰 当前积分：{total_points}
+📅 连续签到：{consecutive_days} 天
+🏆 累计签到：{total_checkins} 次
+🥇 排行榜第 {rank} 名（共{total_users}人）
+
+{vip_status}
+💡 发送「签到」每日领取积分
+💡 发送「积分排行」查看排行榜"""
+
+# 积分排行榜模板
+POINTS_RANKING = """🏆 积分排行榜
+
+{ranking_list}
+
+——————————
+📊 您的排名：第 {my_rank} 名
+💎 您的积分：{my_points}
+
+💡 每日签到可获得积分哦~"""
+
+# 排行榜行模板
+RANKING_LINE = '{rank}. {name} - {points}分 ({checkins}次)'
+RANKING_LINE_VIP = '{rank}. {name}👑 - {points}分 ({checkins}次)'
+
+# 签到帮助消息
+CHECKIN_HELP = """📝 签到积分说明
+
+📌 每日签到可获得积分：
+• 基础积分：10分
+• 连续签到加成：每天+2分（最高+20分）
+• 连续3天奖励：额外+20分
+• 连续7天奖励：额外+50分
+
+✨ VIP专属福利：
+• 所有积分翻倍！
+
+🎯 积分用途：
+• 即将开放积分兑换功能~
+
+💡 发送「签到」开始领取积分吧！"""
+
+# 非VIP积分状态提示
+POINTS_NOT_VIP = '💡 发送「验证」成为VIP，签到积分翻倍！'
+POINTS_IS_VIP = '👑 您是尊贵的VIP，签到积分双倍！'
+
+# ------------------------ 昵称功能相关消息 ------------------------ #
+# 昵称长度限制
+NICKNAME_MIN_LENGTH = 2
+NICKNAME_MAX_LENGTH = 12
+
+# 设置昵称提示
+NICKNAME_SET_PROMPT = """✏️ 设置昵称
+
+当前昵称：{current_nickname}
+
+请发送您想要的昵称（{min_len}-{max_len}个字符）
+
+💡 昵称将在签到、排行榜等功能中显示
+
+发送「取消」退出设置"""
+
+# 昵称设置成功
+NICKNAME_SET_SUCCESS = """✅ 昵称设置成功！
+
+您的昵称已更新为：{nickname}
+
+💡 发送「设置昵称」可随时修改"""
+
+# 昵称无效
+NICKNAME_INVALID = """❌ 昵称格式无效
+
+昵称要求：
+• 长度 {min_len}-{max_len} 个字符
+• 不能包含特殊符号
+
+请重新输入昵称，或发送「取消」退出"""
+
+# 取消设置昵称
+NICKNAME_SET_CANCELLED = """❌ 已取消设置昵称
+
+发送「设置昵称」可重新设置"""
+
+# 查看昵称
+NICKNAME_INFO = """📛 我的昵称
+
+当前昵称：{nickname}
+
+💡 发送「设置昵称」可修改昵称"""
+
+# 默认昵称前缀（用于未设置昵称的用户）
+NICKNAME_DEFAULT_PREFIX = '用户'

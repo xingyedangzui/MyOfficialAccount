@@ -1045,6 +1045,401 @@ class UserDataManager:
             self.record_daily_interaction(openid)
         return is_first
 
+    # ==================== 签到积分系统 ==================== #
+
+    def get_user_checkin_data(self, openid: str) -> Dict:
+        """
+        获取用户签到数据
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            Dict: 用户签到数据
+        """
+        checkin_data = self.data_manager.load_data('checkin_data', {})
+        return checkin_data.get(
+            openid,
+            {
+                'total_points': 0,
+                'total_checkins': 0,
+                'consecutive_days': 0,
+                'last_checkin_date': '',
+                'checkin_history': [],
+            },
+        )
+
+    def do_checkin(self, openid: str) -> Dict:
+        """
+        执行签到操作
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            Dict: 签到结果
+                - success: bool, 是否成功
+                - is_already: bool, 今日是否已签到
+                - points_earned: int, 本次获得积分
+                - bonus_points: int, 连续签到奖励积分
+                - total_points: int, 当前总积分
+                - consecutive_days: int, 连续签到天数
+                - is_vip_bonus: bool, 是否获得VIP双倍奖励
+        """
+        import time
+        from datetime import datetime, timedelta
+
+        today = time.strftime('%Y-%m-%d')
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+
+        result = {
+            'success': False,
+            'is_already': False,
+            'points_earned': 0,
+            'bonus_points': 0,
+            'total_points': 0,
+            'consecutive_days': 0,
+            'is_vip_bonus': False,
+            'total_checkins': 0,
+        }
+
+        # 检查是否是VIP用户（VIP用户积分翻倍）
+        is_vip = self.is_vip_user(openid)
+
+        def update_checkin(current_data):
+            nonlocal result
+
+            if current_data is None:
+                current_data = {}
+
+            # 获取用户当前签到数据
+            user_data = current_data.get(
+                openid,
+                {
+                    'total_points': 0,
+                    'total_checkins': 0,
+                    'consecutive_days': 0,
+                    'last_checkin_date': '',
+                    'checkin_history': [],
+                },
+            )
+
+            last_date = user_data.get('last_checkin_date', '')
+
+            # 检查今日是否已签到
+            if last_date == today:
+                result['is_already'] = True
+                result['total_points'] = user_data['total_points']
+                result['consecutive_days'] = user_data['consecutive_days']
+                result['total_checkins'] = user_data['total_checkins']
+                return current_data
+
+            # 计算连续签到天数
+            if last_date == yesterday:
+                # 连续签到
+                consecutive_days = user_data.get('consecutive_days', 0) + 1
+            else:
+                # 断签，重新计算
+                consecutive_days = 1
+
+            # 基础积分
+            base_points = 10
+
+            # 连续签到奖励（每7天额外奖励）
+            bonus_points = 0
+            if consecutive_days % 7 == 0:
+                bonus_points = 50  # 每满7天奖励50积分
+            elif consecutive_days % 3 == 0:
+                bonus_points = 20  # 每满3天奖励20积分
+
+            # 连续签到加成（连续天数 * 2，最高20）
+            streak_bonus = min(consecutive_days * 2, 20)
+            base_points += streak_bonus
+
+            # VIP双倍积分
+            if is_vip:
+                base_points *= 2
+                bonus_points *= 2
+                result['is_vip_bonus'] = True
+
+            total_earned = base_points + bonus_points
+
+            # 更新用户数据
+            user_data['total_points'] = user_data.get('total_points', 0) + total_earned
+            user_data['total_checkins'] = user_data.get('total_checkins', 0) + 1
+            user_data['consecutive_days'] = consecutive_days
+            user_data['last_checkin_date'] = today
+
+            # 记录签到历史（只保留最近30条）
+            if 'checkin_history' not in user_data:
+                user_data['checkin_history'] = []
+
+            user_data['checkin_history'].append(
+                {
+                    'date': today,
+                    'time': time.strftime('%H:%M:%S'),
+                    'points': total_earned,
+                    'consecutive': consecutive_days,
+                }
+            )
+
+            if len(user_data['checkin_history']) > 30:
+                user_data['checkin_history'] = user_data['checkin_history'][-30:]
+
+            current_data[openid] = user_data
+
+            # 设置返回结果
+            result['success'] = True
+            result['points_earned'] = base_points
+            result['bonus_points'] = bonus_points
+            result['total_points'] = user_data['total_points']
+            result['consecutive_days'] = consecutive_days
+            result['total_checkins'] = user_data['total_checkins']
+
+            return current_data
+
+        self.data_manager.update_data('checkin_data', update_checkin, {})
+
+        # 更新统计
+        if result['success']:
+            self.update_statistics('checkin')
+
+        return result
+
+    def get_points_ranking(self, limit: int = 10) -> list:
+        """
+        获取积分排行榜
+
+        Args:
+            limit: 返回数量限制
+
+        Returns:
+            list: 排行榜列表，每项包含 openid, display_name, total_points, total_checkins
+        """
+        checkin_data = self.data_manager.load_data('checkin_data', {})
+
+        # 构建排行榜
+        ranking = []
+        for openid, data in checkin_data.items():
+            # 获取VIP信息
+            vip_info = self.get_vip_info(openid)
+            # 使用昵称系统获取显示名称
+            display_name = self.get_user_display_name(openid)
+
+            ranking.append(
+                {
+                    'openid': openid,
+                    'display_name': display_name,
+                    'is_vip': vip_info is not None,
+                    'total_points': data.get('total_points', 0),
+                    'total_checkins': data.get('total_checkins', 0),
+                    'consecutive_days': data.get('consecutive_days', 0),
+                }
+            )
+
+        # 按积分降序排序
+        ranking.sort(key=lambda x: x['total_points'], reverse=True)
+
+        return ranking[:limit]
+
+    def get_user_rank(self, openid: str) -> Dict:
+        """
+        获取用户在排行榜中的排名
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            Dict: 包含排名信息
+                - rank: int, 排名（从1开始）
+                - total_users: int, 总参与人数
+        """
+        checkin_data = self.data_manager.load_data('checkin_data', {})
+
+        if openid not in checkin_data:
+            return {'rank': 0, 'total_users': len(checkin_data)}
+
+        user_points = checkin_data[openid].get('total_points', 0)
+
+        # 计算排名
+        rank = 1
+        for uid, data in checkin_data.items():
+            if data.get('total_points', 0) > user_points:
+                rank += 1
+
+        return {'rank': rank, 'total_users': len(checkin_data)}
+
+    def add_points(self, openid: str, points: int, reason: str = '') -> bool:
+        """
+        给用户增加积分（用于奖励等场景）
+
+        Args:
+            openid: 用户的openid
+            points: 增加的积分（可以为负数扣除积分）
+            reason: 原因说明
+
+        Returns:
+            bool: 是否成功
+        """
+        import time
+
+        def update_checkin(current_data):
+            if current_data is None:
+                current_data = {}
+
+            if openid not in current_data:
+                current_data[openid] = {
+                    'total_points': 0,
+                    'total_checkins': 0,
+                    'consecutive_days': 0,
+                    'last_checkin_date': '',
+                    'checkin_history': [],
+                    'points_log': [],
+                }
+
+            user_data = current_data[openid]
+            user_data['total_points'] = max(0, user_data.get('total_points', 0) + points)
+
+            # 记录积分变动日志
+            if 'points_log' not in user_data:
+                user_data['points_log'] = []
+
+            user_data['points_log'].append(
+                {
+                    'time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'points': points,
+                    'reason': reason,
+                    'balance': user_data['total_points'],
+                }
+            )
+
+            # 只保留最近50条日志
+            if len(user_data['points_log']) > 50:
+                user_data['points_log'] = user_data['points_log'][-50:]
+
+            current_data[openid] = user_data
+            return current_data
+
+        return self.data_manager.update_data('checkin_data', update_checkin, {})
+
+    def deduct_points(self, openid: str, points: int, reason: str = '') -> Dict:
+        """
+        扣除用户积分（用于兑换等场景）
+
+        Args:
+            openid: 用户的openid
+            points: 扣除的积分（正数）
+            reason: 原因说明
+
+        Returns:
+            Dict: 结果
+                - success: bool, 是否成功
+                - current_points: int, 当前余额
+                - message: str, 消息
+        """
+        user_data = self.get_user_checkin_data(openid)
+        current_points = user_data.get('total_points', 0)
+
+        if current_points < points:
+            return {
+                'success': False,
+                'current_points': current_points,
+                'message': f'积分不足，当前积分：{current_points}，需要：{points}',
+            }
+
+        self.add_points(openid, -points, reason)
+
+        return {
+            'success': True,
+            'current_points': current_points - points,
+            'message': f'成功扣除{points}积分',
+        }
+
+    # ==================== 用户昵称管理 ==================== #
+
+    def set_user_nickname(self, openid: str, nickname: str) -> bool:
+        """
+        设置用户昵称
+
+        Args:
+            openid: 用户的openid
+            nickname: 昵称
+
+        Returns:
+            bool: 是否成功
+        """
+        import time
+
+        def update_users(current_users):
+            if current_users is None:
+                current_users = {}
+
+            if openid not in current_users:
+                current_users[openid] = {}
+
+            current_users[openid]['nickname'] = nickname
+            current_users[openid]['nickname_set_time'] = time.strftime('%Y-%m-%d %H:%M:%S')
+
+            return current_users
+
+        success = self.data_manager.update_data(self.users_file, update_users, {})
+        if success:
+            print(f'用户 {openid} 昵称已设置为: {nickname}')
+        return success
+
+    def get_user_nickname(self, openid: str) -> str:
+        """
+        获取用户昵称
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            str: 用户昵称，未设置时返回默认昵称
+        """
+        users = self.data_manager.load_data(self.users_file, {})
+        user_info = users.get(openid, {})
+
+        nickname = user_info.get('nickname')
+        if nickname:
+            return nickname
+
+        # 如果没有设置昵称，检查是否是VIP用户
+        vip_info = self.get_vip_info(openid)
+        if vip_info:
+            # VIP用户使用VIP-XXXX作为默认昵称
+            return vip_info.get('vip_id', f'用户{openid[:6]}')
+
+        # 普通用户使用默认昵称
+        return f'用户{openid[:6]}'
+
+    def get_user_display_name(self, openid: str) -> str:
+        """
+        获取用户显示名称（用于排行榜等场景）
+        优先使用自定义昵称，其次使用VIP ID，最后使用默认名称
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            str: 显示名称
+        """
+        return self.get_user_nickname(openid)
+
+    def has_custom_nickname(self, openid: str) -> bool:
+        """
+        检查用户是否已设置自定义昵称
+
+        Args:
+            openid: 用户的openid
+
+        Returns:
+            bool: 是否已设置自定义昵称
+        """
+        users = self.data_manager.load_data(self.users_file, {})
+        user_info = users.get(openid, {})
+        return 'nickname' in user_info and user_info['nickname']
+
 
 # 全局实例
 data_manager = JSONDataManager()

@@ -14,6 +14,7 @@ from weather_service import (
     smart_weather_service,
     get_clothing_advice,
 )
+from ai_service import get_ai_reply, clear_user_conversation, is_ai_enabled
 
 
 class Handle(object):
@@ -154,6 +155,11 @@ class Handle(object):
         if weather_city_reply:
             return self._create_text_response(toUser, fromUser, weather_city_reply)
 
+        # 检查用户是否处于昵称设置模式
+        nickname_reply = self._handle_nickname_session(toUser, user_content)
+        if nickname_reply:
+            return self._create_text_response(toUser, fromUser, nickname_reply)
+
         # 根据用户输入生成回复内容
         reply_content = self._generate_text_reply(toUser, user_content)
 
@@ -272,6 +278,22 @@ class Handle(object):
         if user_content in consts.WeatherPushCommands.STATUS:
             return self._handle_weather_push_status(user_openid)
 
+        # 签到积分相关命令
+        if user_content in consts.Commands.CHECKIN_KEYWORDS:
+            return self._handle_checkin(user_openid)
+        if user_content in consts.Commands.POINTS_KEYWORDS:
+            return self._handle_my_points(user_openid)
+        if user_content in consts.Commands.RANKING_KEYWORDS:
+            return self._handle_points_ranking(user_openid)
+        if user_content in consts.Commands.CHECKIN_HELP_KEYWORDS:
+            return consts.CHECKIN_HELP
+
+        # 昵称相关命令
+        if user_content in consts.Commands.SET_NICKNAME_KEYWORDS:
+            return self._handle_set_nickname(user_openid)
+        if user_content in consts.Commands.MY_NICKNAME_KEYWORDS:
+            return self._handle_my_nickname(user_openid)
+
         # ==================== 3. 前缀匹配命令 ==================== #
         # 快捷记录菜谱：记录菜谱 + 内容（如 "记录菜谱 红烧肉"）
         if user_content.startswith(consts.Commands.RECIPE_ADD_PREFIX):
@@ -364,7 +386,7 @@ class Handle(object):
 
     def _generate_default_reply(self, user_openid, user_content, content_lower):
         """
-        生成默认回复
+        生成默认回复 - 优先使用AI回复
 
         Args:
             user_openid: 用户的OpenID
@@ -377,6 +399,25 @@ class Handle(object):
         is_vip = user_data_manager.is_vip_user(user_openid)
         vip_prefix = consts.VIP_PREFIX if is_vip else ''
 
+        # 清除对话历史命令
+        if content_lower in ('清除对话', '重置对话', '新对话', '清空对话'):
+            clear_user_conversation(user_openid)
+            return '🔄 对话已重置！我们可以开始新的话题啦~ 😊'
+
+        # 尝试使用AI回复
+        if is_ai_enabled():
+            try:
+                print(f'[AI] 为用户 {user_openid[:8]}... 生成AI回复')
+                ai_reply = get_ai_reply(user_content, user_id=user_openid)
+                if ai_reply:
+                    # VIP用户添加前缀
+                    if is_vip:
+                        return f'{vip_prefix}\n{ai_reply}'
+                    return ai_reply
+            except Exception as e:
+                print(f'[AI] AI回复异常: {e}')
+
+        # AI不可用时的备用回复
         # 问候语回复
         if any(keyword in content_lower for keyword in consts.Commands.GREETING_KEYWORDS):
             return consts.HELLO_REPLY.format(vip_prefix=vip_prefix)
@@ -1034,6 +1075,251 @@ class Handle(object):
         return consts.WEATHER_PUSH_STATUS.format(
             status=status, city=city_name, action_hint=action_hint
         )
+
+    # ==================== 签到积分功能处理方法 ==================== #
+
+    def _handle_checkin(self, user_openid):
+        """
+        处理签到命令
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 执行签到
+        result = user_data_manager.do_checkin(user_openid)
+
+        # 今日已签到
+        if result['is_already']:
+            return consts.CHECKIN_ALREADY.format(
+                consecutive_days=result['consecutive_days'],
+                total_points=result['total_points'],
+                total_checkins=result['total_checkins'],
+            )
+
+        # 签到成功，构建回复消息
+        # 奖励文本
+        bonus_text = ''
+        if result['bonus_points'] > 0:
+            bonus_text = f' (+{result["bonus_points"]}奖励)'
+
+        # VIP双倍提示
+        vip_bonus_text = consts.CHECKIN_VIP_BONUS_TEXT if result['is_vip_bonus'] else ''
+
+        # 连续签到提示
+        streak_tip = self._get_streak_tip(result['consecutive_days'], result['bonus_points'])
+
+        return consts.CHECKIN_SUCCESS.format(
+            consecutive_days=result['consecutive_days'],
+            points_earned=result['points_earned'],
+            bonus_text=bonus_text,
+            total_points=result['total_points'],
+            total_checkins=result['total_checkins'],
+            vip_bonus_text=vip_bonus_text,
+            streak_tip=streak_tip,
+        )
+
+    def _get_streak_tip(self, consecutive_days, bonus_points):
+        """
+        获取连续签到提示
+
+        Args:
+            consecutive_days: 连续签到天数
+            bonus_points: 已获得的奖励积分
+
+        Returns:
+            str: 提示文本
+        """
+        # 如果刚好获得了奖励
+        if consecutive_days % 7 == 0 and bonus_points > 0:
+            return consts.CHECKIN_BONUS_GOT_7
+        if consecutive_days % 3 == 0 and bonus_points > 0:
+            return consts.CHECKIN_BONUS_GOT_3
+
+        # 计算距离下一个奖励还有多少天
+        days_to_3 = 3 - (consecutive_days % 3)
+        days_to_7 = 7 - (consecutive_days % 7)
+
+        # 优先提示7天奖励
+        if days_to_7 <= 3:
+            return consts.CHECKIN_BONUS_TIP_7.format(days=days_to_7)
+        else:
+            return consts.CHECKIN_BONUS_TIP_3.format(days=days_to_3)
+
+    def _handle_my_points(self, user_openid):
+        """
+        处理查询积分命令
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 获取用户签到数据
+        checkin_data = user_data_manager.get_user_checkin_data(user_openid)
+
+        # 获取用户排名
+        rank_info = user_data_manager.get_user_rank(user_openid)
+
+        # VIP状态提示
+        is_vip = user_data_manager.is_vip_user(user_openid)
+        vip_status = consts.POINTS_IS_VIP if is_vip else consts.POINTS_NOT_VIP
+
+        return consts.MY_POINTS_INFO.format(
+            total_points=checkin_data.get('total_points', 0),
+            consecutive_days=checkin_data.get('consecutive_days', 0),
+            total_checkins=checkin_data.get('total_checkins', 0),
+            rank=rank_info['rank'] if rank_info['rank'] > 0 else '-',
+            total_users=rank_info['total_users'],
+            vip_status=vip_status,
+        )
+
+    def _handle_points_ranking(self, user_openid):
+        """
+        处理积分排行榜命令
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 获取排行榜
+        ranking = user_data_manager.get_points_ranking(10)
+
+        if not ranking:
+            return '🏆 积分排行榜\n\n暂无数据~\n\n💡 发送「签到」开始积累积分吧！'
+
+        # 构建排行榜列表
+        ranking_lines = []
+        for i, item in enumerate(ranking, 1):
+            if item['is_vip']:
+                line = consts.RANKING_LINE_VIP.format(
+                    rank=i,
+                    name=item['display_name'],
+                    points=item['total_points'],
+                    checkins=item['total_checkins'],
+                )
+            else:
+                line = consts.RANKING_LINE.format(
+                    rank=i,
+                    name=item['display_name'],
+                    points=item['total_points'],
+                    checkins=item['total_checkins'],
+                )
+            ranking_lines.append(line)
+
+        ranking_list = '\n'.join(ranking_lines)
+
+        # 获取当前用户信息
+        user_checkin_data = user_data_manager.get_user_checkin_data(user_openid)
+        user_rank = user_data_manager.get_user_rank(user_openid)
+
+        return consts.POINTS_RANKING.format(
+            ranking_list=ranking_list,
+            my_rank=user_rank['rank'] if user_rank['rank'] > 0 else '-',
+            my_points=user_checkin_data.get('total_points', 0),
+        )
+
+    # ==================== 昵称功能处理方法 ==================== #
+
+    def _handle_nickname_session(self, user_openid, user_content):
+        """
+        处理昵称设置会话中的用户输入
+
+        Args:
+            user_openid: 用户的OpenID
+            user_content: 用户发送的消息内容
+
+        Returns:
+            str: 如果用户在昵称设置会话中返回处理结果消息，否则返回None
+        """
+        # 检查用户会话状态
+        session = user_data_manager.get_user_session_state(user_openid)
+        if not session:
+            return None
+
+        state = session.get('state')
+
+        # 处理等待设置昵称的状态
+        if state != consts.SessionState.WAITING_NICKNAME:
+            return None
+
+        # 用户发送取消
+        if user_content in consts.Commands.CANCEL_KEYWORDS:
+            user_data_manager.clear_user_session_state(user_openid)
+            print(f'用户 {user_openid} 取消了昵称设置')
+            return consts.NICKNAME_SET_CANCELLED
+
+        # 验证昵称格式
+        nickname = user_content.strip()
+
+        # 检查长度
+        if len(nickname) < consts.NICKNAME_MIN_LENGTH or len(nickname) > consts.NICKNAME_MAX_LENGTH:
+            return consts.NICKNAME_INVALID.format(
+                min_len=consts.NICKNAME_MIN_LENGTH, max_len=consts.NICKNAME_MAX_LENGTH
+            )
+
+        # 检查是否包含特殊字符（只允许中文、英文、数字、下划线）
+        import re
+
+        if not re.match(r'^[\u4e00-\u9fa5a-zA-Z0-9_]+$', nickname):
+            return consts.NICKNAME_INVALID.format(
+                min_len=consts.NICKNAME_MIN_LENGTH, max_len=consts.NICKNAME_MAX_LENGTH
+            )
+
+        # 保存昵称
+        success = user_data_manager.set_user_nickname(user_openid, nickname)
+
+        # 清除会话状态
+        user_data_manager.clear_user_session_state(user_openid)
+
+        if success:
+            print(f'用户 {user_openid} 设置昵称成功: {nickname}')
+            return consts.NICKNAME_SET_SUCCESS.format(nickname=nickname)
+        else:
+            return '😢 昵称设置失败，请稍后重试~'
+
+    def _handle_set_nickname(self, user_openid):
+        """
+        处理设置昵称命令
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 获取当前昵称
+        current_nickname = user_data_manager.get_user_nickname(user_openid)
+
+        # 设置用户会话状态为等待输入昵称
+        user_data_manager.set_user_session_state(user_openid, consts.SessionState.WAITING_NICKNAME)
+
+        print(f'用户 {user_openid} 进入昵称设置模式，当前昵称: {current_nickname}')
+        return consts.NICKNAME_SET_PROMPT.format(
+            current_nickname=current_nickname,
+            min_len=consts.NICKNAME_MIN_LENGTH,
+            max_len=consts.NICKNAME_MAX_LENGTH,
+        )
+
+    def _handle_my_nickname(self, user_openid):
+        """
+        处理查看昵称命令
+
+        Args:
+            user_openid: 用户的OpenID
+
+        Returns:
+            str: 回复消息
+        """
+        # 获取当前昵称
+        nickname = user_data_manager.get_user_nickname(user_openid)
+
+        return consts.NICKNAME_INFO.format(nickname=nickname)
 
     def _handle_verify_keyword(self, user_openid):
         """
